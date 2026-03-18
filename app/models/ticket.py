@@ -1,0 +1,28 @@
+import uuid
+from datetime import datetime
+from app.extensions import db
+
+class Ticket(db.Model):
+    __tablename__ = 'tickets'
+    
+    id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Format: TKT-YYYYMMDD-XXXX
+    ticket_number = db.Column(db.String(20), unique=True, nullable=False)
+    subject = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    status = db.Column(db.Enum('open', 'in_progress', 'waiting_on_customer', 'resolved', 'closed', name='ticket_status'), default='open')
+    priority = db.Column(db.Enum('low', 'medium', 'high', 'urgent', name='ticket_priority'), default='medium')
+    category = db.Column(db.String(50), nullable=True) # AI Populated
+    
+    customer_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
+    assigned_agent_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=True)
+    
+    ai_summary = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @staticmethod
+    def generate_ticket_number():
+        date_str = datetime.utcnow().strftime('%Y%m%d')
+        # Logic to fetch count and format XXXX would go in service layer
+        return f"TKT-{date_str}-"
