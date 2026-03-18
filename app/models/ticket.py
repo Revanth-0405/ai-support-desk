@@ -20,9 +20,3 @@ class Ticket(db.Model):
     ai_summary = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    @staticmethod
-    def generate_ticket_number():
-        date_str = datetime.utcnow().strftime('%Y%m%d')
-        # Logic to fetch count and format XXXX would go in service layer
-        return f"TKT-{date_str}-"
