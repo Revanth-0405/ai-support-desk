@@ -9,8 +9,8 @@ class KnowledgeArticle(db.Model):
     title = db.Column(db.String(255), nullable=False)
     content = db.Column(db.Text, nullable=False)
     category = db.Column(db.String(100), nullable=False)
-    tags = db.Column(db.JSON, nullable=True)
-    is_published = db.Column(db.Boolean, default=True) # Used for soft-delete [cite: 76]
+    tags = db.Column(db.JSON, nullable=True) # Stored as JSON array 
+    is_published = db.Column(db.Boolean, default=True) # For soft-delete [cite: 76]
     
     author_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

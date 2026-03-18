@@ -1,21 +1,21 @@
 from datetime import datetime
 from app.extensions import db
 from app.models.ticket import Ticket
-import random
+import sqlalchemy as sa
 
 class TicketService:
     @staticmethod
     def generate_ticket_number():
-        """Generates format: TKT-YYYYMMDD-XXXX"""
         date_str = datetime.utcnow().strftime('%Y%m%d')
-        random_suffix = ''.join(random.choices('0123456789', k=4))
-        return f"TKT-{date_str}-{random_suffix}"
+        # Count tickets created today to increment XXXX
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0)
+        count = db.session.query(Ticket).filter(Ticket.created_at >= today_start).count()
+        return f"TKT-{date_str}-{str(count + 1).zfill(4)}"
 
     @staticmethod
     def create_ticket(data, customer_id):
-        ticket_number = TicketService.generate_ticket_number()
         new_ticket = Ticket(
-            ticket_number=ticket_number,
+            ticket_number=TicketService.generate_ticket_number(),
             subject=data['subject'],
             description=data['description'],
             customer_id=customer_id
