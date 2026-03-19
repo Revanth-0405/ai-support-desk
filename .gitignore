@@ -3,4 +3,4 @@ __pycache__/
 .env
 instance/
 .pytest_cache/
-EOFvenv/
+venv/
