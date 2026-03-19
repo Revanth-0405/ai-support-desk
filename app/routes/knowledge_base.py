@@ -1,46 +1,49 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt
-from app.models.knowledge_base import KnowledgeArticle
-from app.extensions import db
+from app.services.kb_service import KBService
+from app.utils.decorators import role_required
+import sqlalchemy as sa # Fixed crash here
 
 kb_bp = Blueprint('kb', __name__)
-
-def role_required(roles):
-    def wrapper(fn):
-        @jwt_required()
-        def decorator(*args, **kwargs):
-            claims = get_jwt()
-            if claims.get("role") not in roles:
-                return jsonify({"msg": "Admins/Agents only"}), 403
-            return fn(*args, **kwargs)
-        decorator.__name__ = fn.__name__
-        return decorator
-    return wrapper
 
 @kb_bp.route('', methods=['GET'])
 def list_kb():
     page = request.args.get('page', 1, type=int)
     search = request.args.get('search', '')
     
-    query = KnowledgeArticle.query.filter_by(is_published=True)
-    if search:
-        query = query.filter(
-            sa.or_(
-                KnowledgeArticle.title.ilike(f"%{search}%"),
-                KnowledgeArticle.category.ilike(f"%{search}%")
-            )
-        )
+    # Delegate logic to service as reviewer requested
+    articles = KBService.get_all_articles(page=page, search_query=search)
     
-    articles = query.paginate(page=page, per_page=10)
     return jsonify({
-        "items": [{"id": str(a.id), "title": a.title} for a in articles.items],
-        "total": articles.total
+        "items": [{"id": str(a.id), "title": a.title, "category": a.category} for a in articles.items],
+        "total": articles.total,
+        "page": articles.page,
+        "pages": articles.pages
     }), 200
 
-@kb_bp.route('/<uuid:id>', methods=['DELETE'])
-@role_required(['admin'])
-def delete_article(id):
+@kb_bp.route('/<uuid:id>', methods=['GET'])
+def get_article(id):
+    from app.models.knowledge_base import KnowledgeArticle
     article = KnowledgeArticle.query.get_or_404(id)
-    article.is_published = False  # Soft-delete 
-    db.session.commit()
+    return jsonify({"id": str(article.id), "title": article.title, "content": article.content}), 200
+
+@kb_bp.route('', methods=['POST'])
+@role_required(['agent', 'admin'])
+def create_article():
+    data = request.get_json()
+    from flask_jwt_extended import get_jwt_identity
+    author_id = get_jwt_identity()
+    article = KBService.create_article(data, author_id)
+    return jsonify({"msg": "Article created", "id": str(article.id)}), 201
+
+@kb_bp.route('/<uuid:id>', methods=['PUT'])
+@role_required(['agent', 'admin'])
+def update_article(id):
+    data = request.get_json()
+    article = KBService.update_article(id, data)
+    return jsonify({"msg": "Article updated", "id": str(article.id)}), 200
+
+@kb_bp.route('/<uuid:id>', methods=['DELETE'])
+@role_required(['admin', 'agent']) # Fixed RBAC for delete
+def delete_article(id):
+    KBService.soft_delete_article(id)
     return jsonify({"msg": "Article soft-deleted"}), 200
