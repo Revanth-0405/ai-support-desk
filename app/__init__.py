@@ -3,6 +3,7 @@ from app.extensions import db, migrate, jwt, ma, socketio
 from app.config import Config
 from app.utils.logging_config import setup_logging
 
+
 def create_app(config_class=Config):
     # Wire up logging before app creation
     setup_logging()
@@ -22,11 +23,13 @@ def create_app(config_class=Config):
     from app.routes.tickets import tickets_bp
     from app.routes.knowledge_base import kb_bp
     from app.routes.health import health_bp
+    from app.sockets.presence import presence_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(tickets_bp, url_prefix='/api/tickets')
     app.register_blueprint(kb_bp, url_prefix='/api/kb')
     app.register_blueprint(health_bp, url_prefix='/api/health')
+    app.register_blueprint(presence_bp, url_prefix='/api/presence')
 
     # Centralized Error Handlers
     @app.errorhandler(400)

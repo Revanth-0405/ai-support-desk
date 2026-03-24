@@ -1,10 +1,14 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from app.models.ticket import Ticket
 from app.services.ticket_service import TicketService
 from app.schemas.ticket import TicketSchema
 from app.utils.decorators import role_required
 from app.extensions import db
+
+# Phase 2 Imports for Chat and Notifications
+from app.sockets.notifications import emit_new_ticket_alert, emit_ticket_assigned
+from app.services.chat_service import ChatService
 
 tickets_bp = Blueprint('tickets', __name__)
 ticket_schema = TicketSchema()
@@ -20,7 +24,12 @@ def create_ticket():
         return jsonify({"error": "Bad Request", "message": "Missing required fields"}), 400
         
     ticket = TicketService.create_ticket(data, user_id)
-    return jsonify(ticket_schema.dump(ticket)), 201
+    ticket_data = ticket_schema.dump(ticket)
+    
+    # PHASE 2: Trigger real-time alert to all agents when a ticket is created
+    emit_new_ticket_alert(ticket_data)
+    
+    return jsonify(ticket_data), 201
 
 @tickets_bp.route('', methods=['GET'])
 @jwt_required()
@@ -75,13 +84,34 @@ def assign_ticket(id):
     # Agent self-assigns if agent_id is not provided
     ticket.assigned_agent_id = data.get('agent_id', get_jwt_identity())
     db.session.commit()
-    return jsonify({"msg": "Ticket assigned", "ticket": ticket_schema.dump(ticket)}), 200
+    
+    ticket_data = ticket_schema.dump(ticket)
+    
+    # PHASE 2: Emit specific notification to the assigned agent
+    emit_ticket_assigned(str(ticket.assigned_agent_id), ticket_data)
+    
+    return jsonify({"msg": "Ticket assigned", "ticket": ticket_data}), 200
 
 @tickets_bp.route('/<uuid:id>/resolve', methods=['PUT'])
 @role_required(['agent', 'admin'])
 def resolve_ticket(id):
     ticket = Ticket.query.get_or_404(id)
     ticket.status = 'resolved'
-    # ai_summary will be handled here in Phase 3 [cite: 145-148]
+    # ai_summary will be handled here in Phase 3
     db.session.commit()
     return jsonify({"msg": "Ticket resolved", "ticket": ticket_schema.dump(ticket)}), 200
+
+# PHASE 2: New REST Fallback Endpoint for Chat History
+@tickets_bp.route('/<uuid:id>/messages', methods=['GET'])
+@jwt_required()
+def get_ticket_messages(id):
+    ticket = Ticket.query.get_or_404(id)
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    
+    # Security: Customers can only fetch messages for their own tickets
+    if claims.get('role') == 'customer' and str(ticket.customer_id) != user_id:
+        return jsonify({"error": "Forbidden", "msg": "You cannot view messages for this ticket"}), 403
+        
+    messages = ChatService.get_messages_by_ticket(id)
+    return jsonify(messages), 200
