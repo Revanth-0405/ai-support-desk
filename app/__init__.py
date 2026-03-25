@@ -1,4 +1,6 @@
-from flask import Flask, jsonify
+import uuid
+import logging
+from flask import Flask, jsonify, request
 from app.extensions import db, migrate, jwt, ma, socketio
 from app.config import Config
 from app.utils.logging_config import setup_logging
@@ -17,6 +19,10 @@ def create_app(config_class=Config):
     jwt.init_app(app)
     ma.init_app(app)
     socketio.init_app(app, cors_allowed_origins="*")
+
+    @app.before_request
+    def add_request_id():
+        request.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
 
     # Register Blueprints
     from app.routes.auth import auth_bp
@@ -44,5 +50,12 @@ def create_app(config_class=Config):
     def internal_error(error):
         db.session.rollback()
         return jsonify({"error": "Internal Server Error"}), 500
+    
+    with app.app_context():
+        try:
+            from app.services.chat_service import ChatService
+            ChatService.initialize_tables()
+        except Exception as e:
+            app.logger.error(f"DynamoDB Init Error: {str(e)}")
 
     return app

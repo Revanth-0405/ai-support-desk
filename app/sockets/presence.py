@@ -48,9 +48,8 @@ def handle_connect(auth):
 def handle_disconnect():
     user_data = connected_users.pop(request.sid, None)
     if user_data:
-        PresenceService.update_presence(user_data['user_id'], 'offline')
+        PresenceService.update_presence(user_data['user_id'], 'offline', active_ticket_id=None)
         emit('presence_update', {'user_id': user_data['user_id'], 'status': 'offline'}, broadcast=True)
-
 @socketio.on('typing')
 def handle_typing(data):
     """Broadcasts typing indicator [cite: 110]"""

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import db
 
 class KnowledgeArticle(db.Model):
@@ -13,5 +13,5 @@ class KnowledgeArticle(db.Model):
     is_published = db.Column(db.Boolean, default=True) # For soft-delete [cite: 76]
     
     author_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

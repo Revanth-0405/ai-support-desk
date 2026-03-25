@@ -39,7 +39,15 @@ def list_tickets():
     priority = request.args.get('priority')
     category = request.args.get('category')
     
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    
     query = Ticket.query
+    
+    # Scope tickets so customers only see their own
+    if claims.get('role') == 'customer':
+        query = query.filter_by(customer_id=user_id)
+        
     if status:
         query = query.filter_by(status=status)
     if priority:
@@ -81,26 +89,43 @@ def update_ticket(id):
 def assign_ticket(id):
     data = request.get_json() or {}
     ticket = Ticket.query.get_or_404(id)
-    # Agent self-assigns if agent_id is not provided
-    ticket.assigned_agent_id = data.get('agent_id', get_jwt_identity())
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    
+    target_agent_id = data.get('agent_id', user_id)
+
+    # RBAC Logic
+    if claims.get('role') == 'agent':
+        if str(target_agent_id) != str(user_id):
+            return jsonify({"error": "Forbidden", "msg": "Agents can only self-assign"}), 403
+        if ticket.assigned_agent_id is not None and str(ticket.assigned_agent_id) != str(user_id):
+            return jsonify({"error": "Forbidden", "msg": "Ticket already assigned"}), 403
+
+    ticket.assigned_agent_id = target_agent_id
     db.session.commit()
     
     ticket_data = ticket_schema.dump(ticket)
-    
-    # PHASE 2: Emit specific notification to the assigned agent
     emit_ticket_assigned(str(ticket.assigned_agent_id), ticket_data)
-    
     return jsonify({"msg": "Ticket assigned", "ticket": ticket_data}), 200
 
 @tickets_bp.route('/<uuid:id>/resolve', methods=['PUT'])
 @role_required(['agent', 'admin'])
 def resolve_ticket(id):
+    data = request.get_json() or {}
     ticket = Ticket.query.get_or_404(id)
     ticket.status = 'resolved'
-    # ai_summary will be handled here in Phase 3
+    
+    # Accept optional summary
+    if 'summary' in data:
+        ticket.ai_summary = data['summary']
+        
     db.session.commit()
+    
+    # Emit ticket_resolved event
+    from app.extensions import socketio
+    socketio.emit('ticket_resolved', {'ticket_id': str(id)}, room=f"ticket_{id}")
+    
     return jsonify({"msg": "Ticket resolved", "ticket": ticket_schema.dump(ticket)}), 200
-
 # PHASE 2: New REST Fallback Endpoint for Chat History
 @tickets_bp.route('/<uuid:id>/messages', methods=['GET'])
 @jwt_required()

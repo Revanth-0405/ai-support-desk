@@ -39,30 +39,27 @@ class PresenceService:
 
     @staticmethod
     def get_agents_presence(agent_ids):
-        """Batch retrieves presence for a list of agent IDs """
         if not agent_ids:
             return []
             
         dynamodb = ChatService.get_db()
-        keys = [{'user_id': str(aid)} for aid in agent_ids]
-        
-        response = dynamodb.meta.client.batch_get_item(
-            RequestItems={
-                'UserPresence': {
-                    'Keys': keys
-                }
-            }
-        )
-        
-        # Default to offline if no record exists
-        presence_dict = {item['user_id']: item for item in response.get('Responses', {}).get('UserPresence', [])}
-        
         results = []
-        for aid in agent_ids:
-            str_aid = str(aid)
-            if str_aid in presence_dict:
-                results.append(presence_dict[str_aid])
-            else:
-                results.append({"user_id": str_aid, "status": "offline", "last_seen": None})
-                
+        
+        # ACTION ITEM 16: Chunk into batches of 100
+        for i in range(0, len(agent_ids), 100):
+            chunk = agent_ids[i:i+100]
+            keys = [{'user_id': str(aid)} for aid in chunk]
+            
+            response = dynamodb.meta.client.batch_get_item(
+                RequestItems={'UserPresence': {'Keys': keys}}
+            )
+            presence_dict = {item['user_id']: item for item in response.get('Responses', {}).get('UserPresence', [])}
+            
+            for aid in chunk:
+                str_aid = str(aid)
+                if str_aid in presence_dict:
+                    results.append(presence_dict[str_aid])
+                else:
+                    results.append({"user_id": str_aid, "status": "offline", "last_seen": None})
+                    
         return results

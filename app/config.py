@@ -19,3 +19,8 @@ class Config:
     
     # Gemini AI Config
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+
+class TestConfig(Config):
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    DYNAMODB_ENDPOINT_URL = 'http://localhost:8000'

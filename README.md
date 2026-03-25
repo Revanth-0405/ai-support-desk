@@ -140,3 +140,38 @@ python run.py
 | DELETE | /api/kb/<id> | Soft-delete KB article | Admin         |
 
 ---
+
+## 8. Phase 2: Real-Time & Presence API (WebSocket)
+
+### New REST Endpoints
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `GET`  | `/api/tickets/<id>/messages` | Get chat history for a ticket (REST fallback) | Yes (Customer scoped) |
+| `GET`  | `/api/presence/agents` | List all agents with current presence status | Agent/Admin |
+
+### WebSocket Connection (URL: `ws://localhost:5000`)
+**Authentication:** A valid JWT token MUST be passed during the connection handshake.
+* **Query String:** `?token=<YOUR_JWT>`
+* **Payload:** `{ "token": "<YOUR_JWT>" }`
+Unauthenticated connections will be immediately rejected.
+
+### Client-to-Server Events (Emit)
+| Event Name | Payload | Description |
+|------------|---------|-------------|
+| `join_room` | `{ "ticket_id": "<uuid>" }` | Joins a ticket's chat room. Returns `message_history` array. |
+| `send_message`| `{ "ticket_id": "<uuid>", "content": "Hello!" }` | Sends a message to the room. Stored in DynamoDB. |
+| `leave_room`| `{ "ticket_id": "<uuid>" }` | Leaves the chat room. |
+| `typing` | `{ "ticket_id": "<uuid>" }` | Broadcasts typing status to others in the room. |
+
+### Server-to-Client Events (Listen)
+| Event Name | Payload | Description |
+|------------|---------|-------------|
+| `message_history` | `[ { message_obj }, ... ]` | Array of last 50 messages, received upon joining a room. |
+| `new_message` | `{ message_obj }` | Real-time broadcast of a new chat message. |
+| `user_typing` | `{ "user_id": "<uuid>", "ticket_id": "<uuid>" }` | Another user is typing. |
+| `user_left` | `{ "user_id": "<uuid>", "ticket_id": "<uuid>" }` | A user left the chat room. |
+| `presence_update` | `{ "user_id": "<uuid>", "status": "online/offline" }`| Global presence state changes. |
+| `new_ticket_alert`| `{ ticket_obj }` | Alert to all agents when a new ticket is created. |
+| `ticket_assigned` | `{ ticket_obj }` | Alert emitted specifically to the assigned agent. |
+| `ticket_resolved` | `{ "ticket_id": "<uuid>" }` | Alert emitted to the room when the ticket is closed. |
+| `error` | `{ "msg": "Error details" }` | Emitted when validation or auth fails. |
