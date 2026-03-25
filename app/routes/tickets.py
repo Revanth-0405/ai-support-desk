@@ -39,7 +39,15 @@ def list_tickets():
     priority = request.args.get('priority')
     category = request.args.get('category')
     
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    
     query = Ticket.query
+    
+    # Scope tickets so customers only see their own
+    if claims.get('role') == 'customer':
+        query = query.filter_by(customer_id=user_id)
+        
     if status:
         query = query.filter_by(status=status)
     if priority:
