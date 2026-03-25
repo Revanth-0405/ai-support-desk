@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import db
 
 class Ticket(db.Model):
@@ -20,5 +20,5 @@ class Ticket(db.Model):
     assigned_agent_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=True)
     
     ai_summary = db.Column(db.Text, nullable=True) # Populated by AI on resolution 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
