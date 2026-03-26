@@ -5,6 +5,7 @@ from app.services.ticket_service import TicketService
 from app.schemas.ticket import TicketSchema
 from app.utils.decorators import role_required
 from app.extensions import db
+from app.services.ai_service import AIService
 
 # Phase 2 Imports for Chat and Notifications
 from app.sockets.notifications import emit_new_ticket_alert, emit_ticket_assigned
@@ -23,10 +24,21 @@ def create_ticket():
     if not data.get('subject') or not data.get('description'):
         return jsonify({"error": "Bad Request", "message": "Missing required fields"}), 400
         
+    # Transactional Creation 
     ticket = TicketService.create_ticket(data, user_id)
-    ticket_data = ticket_schema.dump(ticket)
     
-    # PHASE 2: Trigger real-time alert to all agents when a ticket is created
+    # Try AI Categorisation (Graceful Degradation)
+    try:
+        ai_result = AIService.categorise_ticket(str(ticket.id), ticket.subject, ticket.description)
+        if ai_result:
+            ticket.category = ai_result.get('category')
+            ticket.priority = ai_result.get('priority', ticket.priority)
+            db.session.commit() # Save AI enhancements
+    except Exception as e:
+        # If AI fails, ticket remains created with default priority/null category
+        db.session.rollback() 
+    
+    ticket_data = ticket_schema.dump(ticket)
     emit_new_ticket_alert(ticket_data)
     
     return jsonify(ticket_data), 201
@@ -115,17 +127,24 @@ def resolve_ticket(id):
     ticket = Ticket.query.get_or_404(id)
     ticket.status = 'resolved'
     
-    # Accept optional summary
+    # If summary is provided manually, use it. Otherwise, use AI.
     if 'summary' in data:
         ticket.ai_summary = data['summary']
-        
+    else:
+        # Fetch full chat history from DynamoDB and call AI Summarise 
+        messages = ChatService.get_messages_by_ticket(id, limit=200)
+        summary = AIService.summarise_conversation(str(id), messages)
+        if summary:
+            ticket.ai_summary = summary
+            
     db.session.commit()
     
-    # Emit ticket_resolved event
+    # Emit resolution event [cite: 149-150]
     from app.extensions import socketio
     socketio.emit('ticket_resolved', {'ticket_id': str(id)}, room=f"ticket_{id}")
     
     return jsonify({"msg": "Ticket resolved", "ticket": ticket_schema.dump(ticket)}), 200
+
 # PHASE 2: New REST Fallback Endpoint for Chat History
 @tickets_bp.route('/<uuid:id>/messages', methods=['GET'])
 @jwt_required()

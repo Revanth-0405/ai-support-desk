@@ -30,12 +30,14 @@ def create_app(config_class=Config):
     from app.routes.knowledge_base import kb_bp
     from app.routes.health import health_bp
     from app.sockets.presence import presence_bp
+    from app.routes.ai import ai_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(tickets_bp, url_prefix='/api/tickets')
     app.register_blueprint(kb_bp, url_prefix='/api/kb')
     app.register_blueprint(health_bp, url_prefix='/api/health')
     app.register_blueprint(presence_bp, url_prefix='/api/presence')
+    app.register_blueprint(ai_bp, url_prefix='/api/ai')
 
     # Centralized Error Handlers
     @app.errorhandler(400)
