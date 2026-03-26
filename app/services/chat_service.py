@@ -49,6 +49,23 @@ class ChatService:
         except ClientError as e:
             if e.response['Error']['Code'] != 'ResourceInUseException':
                 raise e # Ignore if tables already exist
+            
+            # Create AIUsageLogs Table [cite: 153-154]
+            dynamodb.create_table(
+                TableName='AIUsageLogs',
+                KeySchema=[
+                    {'AttributeName': 'log_id', 'KeyType': 'HASH'},
+                    {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
+                ],
+                AttributeDefinitions=[
+                    {'AttributeName': 'log_id', 'AttributeType': 'S'},
+                    {'AttributeName': 'timestamp', 'AttributeType': 'S'}
+                ],
+                BillingMode='PAY_PER_REQUEST'
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] != 'ResourceInUseException':
+                raise e
 
     @staticmethod
     def put_message(ticket_id, sender_id, sender_role, content, message_type='text'):
