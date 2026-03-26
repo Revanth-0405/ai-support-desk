@@ -32,32 +32,38 @@ def suggest_endpoint(ticket_id):
     ticket = Ticket.query.get_or_404(ticket_id)
     agent_id = get_jwt_identity()
     
-    # 1. Retrieve last 20 messages
+    # 1. Retrieve last 20 messages [cite: 138]
     messages = ChatService.get_messages_by_ticket(ticket_id, limit=20)
     
-    # 2. Search knowledge base (keyword match on subject/category)
-    search_terms = ticket.subject.split()
+    # 2. Search knowledge base securely 
+    search_terms = ticket.subject.split() if ticket.subject else []
     if ticket.category:
         search_terms.append(ticket.category)
         
-    filters = [KnowledgeArticle.title.ilike(f"%{term}%") for term in search_terms]
-    kb_articles = KnowledgeArticle.query.filter(sa.or_(*filters)).limit(3).all()
+    kb_articles = []
+    if search_terms: # BUG FIX: Prevent crash if search_terms is empty
+        filters = [
+            sa.or_(
+                KnowledgeArticle.title.ilike(f"%{term}%"),
+                KnowledgeArticle.category.ilike(f"%{term}%")
+            ) for term in search_terms
+        ]
+        kb_articles = KnowledgeArticle.query.filter(sa.or_(*filters)).limit(3).all()
     
-    # 3. Call AI
+    # 3. Call AI [cite: 140-141]
     suggestion = AIService.generate_suggestion(str(ticket_id), messages, kb_articles)
     if not suggestion:
         return jsonify({"error": "Failed to generate suggestion"}), 500
         
-    # 4. Store in DynamoDB as ai_suggestion
+    # 4. Store in DynamoDB [cite: 142]
     stored_message = ChatService.put_message(
         ticket_id=ticket_id,
         sender_id=agent_id,
         sender_role='agent',
         content=suggestion,
-        message_type='ai_suggestion' # Visual indicator in chat history
+        message_type='ai_suggestion'
     )
     
-    # Optional: Broadcast it to the room so the agent sees it immediately
     from app.extensions import socketio
     socketio.emit('new_message', stored_message, room=f"ticket_{ticket_id}")
     
