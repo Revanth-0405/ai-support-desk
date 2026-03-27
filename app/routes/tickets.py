@@ -146,16 +146,42 @@ def resolve_ticket(id):
     return jsonify({"msg": "Ticket resolved", "ticket": ticket_schema.dump(ticket)}), 200
 
 # PHASE 2: New REST Fallback Endpoint for Chat History
-@tickets_bp.route('/<uuid:id>/messages', methods=['GET'])
+@tickets_bp.route('/<uuid:id>', methods=['GET'])
 @jwt_required()
-def get_ticket_messages(id):
+def get_ticket(id):
     ticket = Ticket.query.get_or_404(id)
-    user_id = get_jwt_identity()
     claims = get_jwt()
     
-    # Security: Customers can only fetch messages for their own tickets
-    if claims.get('role') == 'customer' and str(ticket.customer_id) != user_id:
-        return jsonify({"error": "Forbidden", "msg": "You cannot view messages for this ticket"}), 403
+    # FIX: Customer scoping
+    if claims.get('role') == 'customer' and str(ticket.customer_id) != get_jwt_identity():
+        return jsonify({"error": "Forbidden"}), 403
         
-    messages = ChatService.get_messages_by_ticket(id)
-    return jsonify(messages), 200
+    return jsonify(ticket_schema.dump(ticket)), 200
+
+@tickets_bp.route('', methods=['POST'])
+@jwt_required()
+def create_ticket():
+    data = request.get_json()
+    user_id = get_jwt_identity()
+    
+    if not data.get('subject') or not data.get('description'):
+        return jsonify({"error": "Bad Request", "message": "Missing required fields"}), 400
+        
+    ticket = TicketService.create_ticket(data, user_id)
+    db.session.commit() # Save ticket first
+    
+    # FIX: Use nested transaction for partial failure resiliency
+    try:
+        with db.session.begin_nested():
+            ai_result = AIService.categorise_ticket(str(ticket.id), ticket.subject, ticket.description)
+            if ai_result:
+                ticket.category = ai_result.get('category')
+                ticket.priority = ai_result.get('priority', ticket.priority)
+        db.session.commit()
+    except Exception:
+        db.session.rollback() # Roll back only the AI update
+    
+    ticket_data = ticket_schema.dump(ticket)
+    emit_new_ticket_alert(ticket_data)
+    
+    return jsonify(ticket_data), 201
