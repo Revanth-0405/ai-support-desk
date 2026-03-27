@@ -6,8 +6,8 @@ import logging
 from datetime import datetime, timezone
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
-from botocore.exceptions import ClientError
 from app.services.chat_service import ChatService
+from flask import request
 
 logger = logging.getLogger(__name__)
 
@@ -18,20 +18,21 @@ class AIService:
         if not api_key:
             raise ValueError("GEMINI_API_KEY is not set.")
         genai.configure(api_key=api_key)
-        # Using the exact model required by the spec [cite: 128]
         return genai.GenerativeModel('gemini-2.0-flash')
 
     @staticmethod
     def log_usage(feature, ticket_id, prompt_tokens, completion_tokens, latency_ms, success, error=None):
-        """Logs AI API usage to DynamoDB [cite: 153-154]"""
         try:
             dynamodb = ChatService.get_db()
             table = dynamodb.Table('AIUsageLogs')
+            req_id = getattr(request, 'request_id', 'ws-event')
+            
             table.put_item(Item={
                 'log_id': str(uuid.uuid4()),
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'feature': feature,
                 'ticket_id': str(ticket_id),
+                'request_id': req_id,
                 'model_used': 'gemini-2.0-flash',
                 'prompt_tokens': prompt_tokens or 0,
                 'completion_tokens': completion_tokens or 0,
@@ -44,7 +45,6 @@ class AIService:
 
     @staticmethod
     def _call_with_retry(prompt, feature_name, ticket_id, generation_config=None):
-        """Executes API call with exponential backoff and tracks metrics """
         model = AIService._get_model()
         max_retries = 3
         base_delay = 2
@@ -54,29 +54,28 @@ class AIService:
             try:
                 response = model.generate_content(prompt, generation_config=generation_config)
                 latency = (time.time() - start_time) * 1000
-                
-                # Extract token metrics if available
                 p_tokens = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else 0
                 c_tokens = response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') else 0
-                
                 AIService.log_usage(feature_name, ticket_id, p_tokens, c_tokens, latency, True)
                 return response.text
                 
             except Exception as e:
-                # Handle 429 Too Many Requests or other errors
                 if '429' in str(e) and attempt < max_retries - 1:
-                    time.sleep(base_delay ** attempt)
+                    # FIX: Meaningful exponential backoff
+                    time.sleep(base_delay * (2 ** attempt)) 
                     continue
                     
                 latency = (time.time() - start_time) * 1000
                 AIService.log_usage(feature_name, ticket_id, 0, 0, latency, False, error=str(e))
-                logger.error(f"AI Call Failed ({feature_name}): {str(e)}")
                 return None
         return None
 
     @staticmethod
     def categorise_ticket(ticket_id, subject, description):
-        """Auto-categorises using structured JSON output and few-shot examples [cite: 132-135]"""
+        # FIX: JSON dump input to prevent injection breaking the prompt
+        safe_subject = json.dumps(subject)
+        safe_desc = json.dumps(description)
+        
         prompt = f"""
         Analyze the following support ticket and assign it a category and priority.
         Valid Categories: billing, technical, account, feature_request, bug_report, general.
@@ -84,20 +83,26 @@ class AIService:
         
         Examples:
         Subject: "Can't access my dashboard" | Description: "I get a 500 error on login." -> {{"category": "technical", "priority": "high"}}
-        Subject: "Invoice incorrect" | Description: "I was overcharged this month." -> {{"category": "billing", "priority": "high"}}
-        Subject: "Dark mode?" | Description: "Would love a dark theme." -> {{"category": "feature_request", "priority": "low"}}
         
         Now categorize this ticket:
-        Subject: "{subject}"
-        Description: "{description}"
+        Subject: {safe_subject}
+        Description: {safe_desc}
         """
-        # Force JSON response schema [cite: 135, 224]
         config = GenerationConfig(response_mime_type="application/json")
         result = AIService._call_with_retry(prompt, 'categorise', ticket_id, generation_config=config)
         
         if result:
             try:
-                return json.loads(result)
+                parsed = json.loads(result)
+                # FIX: Validate output against allowed ENUMs
+                VALID_CATEGORIES = {'billing', 'technical', 'account', 'feature_request', 'bug_report', 'general'}
+                VALID_PRIORITIES = {'low', 'medium', 'high', 'urgent'}
+                
+                if parsed.get('category') not in VALID_CATEGORIES:
+                    parsed['category'] = None
+                if parsed.get('priority') not in VALID_PRIORITIES:
+                    parsed.pop('priority', None)
+                return parsed
             except json.JSONDecodeError:
                 return None
         return None
