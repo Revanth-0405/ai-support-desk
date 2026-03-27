@@ -45,21 +45,28 @@ class PresenceService:
         dynamodb = ChatService.get_db()
         results = []
         
-        # ACTION ITEM 16: Chunk into batches of 100
         for i in range(0, len(agent_ids), 100):
             chunk = agent_ids[i:i+100]
-            keys = [{'user_id': str(aid)} for aid in chunk]
+            # FIX: Correct low-level key format for batch_get_item
+            keys = [{'user_id': {'S': str(aid)}} for aid in chunk]
             
             response = dynamodb.meta.client.batch_get_item(
                 RequestItems={'UserPresence': {'Keys': keys}}
             )
-            presence_dict = {item['user_id']: item for item in response.get('Responses', {}).get('UserPresence', [])}
+            
+            # Map low-level responses back to dicts
+            presence_dict = {}
+            for item in response.get('Responses', {}).get('UserPresence', []):
+                user_id = item.get('user_id', {}).get('S')
+                if user_id:
+                    presence_dict[user_id] = {
+                        'user_id': user_id,
+                        'status': item.get('status', {}).get('S', 'offline'),
+                        'last_seen': item.get('last_seen', {}).get('S')
+                    }
             
             for aid in chunk:
                 str_aid = str(aid)
-                if str_aid in presence_dict:
-                    results.append(presence_dict[str_aid])
-                else:
-                    results.append({"user_id": str_aid, "status": "offline", "last_seen": None})
+                results.append(presence_dict.get(str_aid, {"user_id": str_aid, "status": "offline", "last_seen": None}))
                     
         return results
