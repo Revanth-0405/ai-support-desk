@@ -31,6 +31,7 @@ def create_app(config_class=Config):
     from app.routes.health import health_bp
     from app.sockets.presence import presence_bp
     from app.routes.ai import ai_bp
+    from app.routes.analytics import analytics_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(tickets_bp, url_prefix='/api/tickets')
@@ -38,6 +39,7 @@ def create_app(config_class=Config):
     app.register_blueprint(health_bp, url_prefix='/api/health')
     app.register_blueprint(presence_bp, url_prefix='/api/presence')
     app.register_blueprint(ai_bp, url_prefix='/api/ai')
+    app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
 
     # Centralized Error Handlers
     @app.errorhandler(400)
@@ -54,10 +56,12 @@ def create_app(config_class=Config):
         return jsonify({"error": "Internal Server Error"}), 500
     
     with app.app_context():
-        try:
-            from app.services.chat_service import ChatService
-            ChatService.initialize_tables()
-        except Exception as e:
-            app.logger.error(f"DynamoDB Init Error: {str(e)}")
+        # Skip DynamoDB connection attempts during automated testing
+        if not app.config.get('TESTING'):
+            try:
+                from app.services.chat_service import ChatService
+                ChatService.initialize_tables()
+            except Exception as e:
+                app.logger.error(f"DynamoDB Init Error: {str(e)}")
 
     return app

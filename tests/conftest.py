@@ -1,7 +1,11 @@
+import os
 import pytest
 from app import create_app
 from app.extensions import db
 from app.config import TestConfig
+
+
+os.environ['GEMINI_API_KEY'] = 'test-dummy-key'
 
 @pytest.fixture
 def app():
