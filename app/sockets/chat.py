@@ -1,8 +1,9 @@
+import uuid
 from flask import request
 from flask_socketio import emit, join_room, leave_room, rooms
 from app.extensions import socketio, db
 from app.services.chat_service import ChatService
-from app.services.presence_service import PresenceService # ADDED THIS IMPORT
+from app.services.presence_service import PresenceService
 from app.models.ticket import Ticket
 from app.sockets.presence import connected_users
 
@@ -47,15 +48,23 @@ def on_send_message(data):
     
     room = f"ticket_{ticket_id}"
     
-    # Verify sender is actually in the room
     if room not in rooms(request.sid):
         emit('error', {'msg': 'Unauthorized: You have not joined this room'})
         return
         
+    # Generate a unique trace ID for WebSocket events
+    event_id = f"ws-{uuid.uuid4()}"
+        
     message = ChatService.put_message(
-        ticket_id=ticket_id, sender_id=user_data['user_id'],
-        sender_role=user_data['role'], content=content
+        ticket_id=ticket_id, 
+        sender_id=user_data['user_id'],
+        sender_role=user_data['role'], 
+        content=content
     )
+    
+    # Manually append the request_id to the message dict for broadcasting
+    message['request_id'] = event_id
+    
     emit('new_message', message, room=room)
 
 @socketio.on('leave_room')

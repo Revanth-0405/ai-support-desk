@@ -109,7 +109,7 @@ class AIService:
 
     @staticmethod
     def generate_suggestion(ticket_id, context_messages, kb_articles):
-        """Generates a professional draft response [cite: 136-141]"""
+        """Generates a professional draft response"""
         kb_context = "\n".join([f"Title: {kb.title}\nContent: {kb.content}" for kb in kb_articles])
         chat_context = "\n".join([f"{msg['sender_role']}: {msg['content']}" for msg in context_messages])
         
@@ -128,7 +128,7 @@ class AIService:
 
     @staticmethod
     def summarise_conversation(ticket_id, messages):
-        """Generates a 3-5 sentence summary on resolution [cite: 146-149]"""
+        """Generates a 3-5 sentence summary on resolution"""
         chat_context = "\n".join([f"{msg['sender_role']}: {msg['content']}" for msg in messages])
         
         prompt = f"""

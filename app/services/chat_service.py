@@ -61,7 +61,7 @@ class ChatService:
 
     @staticmethod
     def get_messages_by_ticket(ticket_id, limit=50):
-        """Retrieves last N messages using efficient Query [cite: 104, 226]"""
+        """Retrieves last N messages using efficient Query """
         dynamodb = ChatService.get_db()
         table = dynamodb.Table('ChatMessages')
         

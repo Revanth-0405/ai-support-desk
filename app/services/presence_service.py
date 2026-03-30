@@ -5,7 +5,7 @@ from boto3.dynamodb.conditions import Attr
 class PresenceService:
     @staticmethod
     def update_presence(user_id, status, socket_id=None, active_ticket_id=None):
-        """Updates user presence state [cite: 106, 108]"""
+        """Updates user presence state """
         dynamodb = ChatService.get_db()
         table = dynamodb.Table('UserPresence')
         
