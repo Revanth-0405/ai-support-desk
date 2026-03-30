@@ -56,10 +56,12 @@ def create_app(config_class=Config):
         return jsonify({"error": "Internal Server Error"}), 500
     
     with app.app_context():
-        try:
-            from app.services.chat_service import ChatService
-            ChatService.initialize_tables()
-        except Exception as e:
-            app.logger.error(f"DynamoDB Init Error: {str(e)}")
+        # Skip DynamoDB connection attempts during automated testing
+        if not app.config.get('TESTING'):
+            try:
+                from app.services.chat_service import ChatService
+                ChatService.initialize_tables()
+            except Exception as e:
+                app.logger.error(f"DynamoDB Init Error: {str(e)}")
 
     return app
