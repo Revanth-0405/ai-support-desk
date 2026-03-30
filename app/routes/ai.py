@@ -82,7 +82,7 @@ def summarise_endpoint(ticket_id):
 @ai_bp.route('/usage', methods=['GET'])
 @role_required(['admin'])
 def usage_stats():
-    """Get AI API usage stats from DynamoDB [cite: 153-155]"""
+    """Get AI API usage stats from DynamoDB ]"""
     dynamodb = ChatService.get_db()
     table = dynamodb.Table('AIUsageLogs')
     

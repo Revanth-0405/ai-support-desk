@@ -22,10 +22,10 @@ def list_agents_presence():
 
 @socketio.on('connect')
 def handle_connect(auth):
-    """Requires JWT token in handshake [cite: 221]"""
+    """Requires JWT token in handshake"""
     token = auth.get('token') if auth else request.args.get('token')
     if not token:
-        return False  # Rejects unauthenticated connection [cite: 222]
+        return False  # Rejects unauthenticated connection
         
     try:
         decoded = decode_token(token)
@@ -35,7 +35,7 @@ def handle_connect(auth):
         # Track user session
         connected_users[request.sid] = {'user_id': user_id, 'role': role}
         
-        # If agent/admin, add to broadcast room for new ticket alerts [cite: 114]
+        # If agent/admin, add to broadcast room for new ticket alerts
         if role in ['agent', 'admin']:
             join_room('agents_room')
             
@@ -52,7 +52,7 @@ def handle_disconnect():
         emit('presence_update', {'user_id': user_data['user_id'], 'status': 'offline'}, broadcast=True)
 @socketio.on('typing')
 def handle_typing(data):
-    """Broadcasts typing indicator [cite: 110]"""
+    """Broadcasts typing indicator"""
     ticket_id = data.get('ticket_id')
     user_data = connected_users.get(request.sid)
     if ticket_id and user_data:

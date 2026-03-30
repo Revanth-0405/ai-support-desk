@@ -9,7 +9,7 @@ class TicketService:
         date_str = now.strftime('%Y%m%d')
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         
-        # Use SELECT ... FOR UPDATE to lock the rows and prevent race conditions [cite: 56]
+        # Use SELECT ... FOR UPDATE to lock the rows and prevent race conditions 
         count = db.session.query(Ticket).filter(Ticket.created_at >= today_start).with_for_update().count()
         return f"TKT-{date_str}-{str(count + 1).zfill(4)}"
 
