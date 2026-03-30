@@ -7,7 +7,7 @@ class Ticket(db.Model):
     
     id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # Format: TKT-YYYYMMDD-XXXX 
-    ticket_number = db.Column(db.String(25), unique=True, nullable=False)
+    ticket_number = db.Column(db.String(20), unique=True, nullable=False)
     subject = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=False)
     

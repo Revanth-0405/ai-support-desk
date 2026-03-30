@@ -141,7 +141,7 @@ python run.py
 
 ---
 
-## 8. Phase 2: Real-Time & Presence API (WebSocket)
+## . Phase 2: Real-Time & Presence API (WebSocket)
 
 ### New REST Endpoints
 | Method | Endpoint | Description | Auth Required |
@@ -175,3 +175,24 @@ Unauthenticated connections will be immediately rejected.
 | `ticket_assigned` | `{ ticket_obj }` | Alert emitted specifically to the assigned agent. |
 | `ticket_resolved` | `{ "ticket_id": "<uuid>" }` | Alert emitted to the room when the ticket is closed. |
 | `error` | `{ "msg": "Error details" }` | Emitted when validation or auth fails. |
+
+## 8. Phase 3: AI Integration (Google Gemini)
+
+### Environment Variables
+Ensure the following is added to your `.env` file to enable AI features:
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `GEMINI_API_KEY` | Google AI Studio API Key | `AIzaSy...` |
+
+### AI Features
+* **Auto-Categorisation:** When a new ticket is created, Gemini automatically analyzes the subject and description to assign the correct `category` and `priority`.
+* **Suggested Responses:** Agents can request an AI-generated draft response based on the ticket's chat history and relevant Knowledge Base articles.
+* **Conversation Summaries:** When a ticket is resolved, Gemini analyzes the entire chat log and generates a 3-5 sentence summary of the issue and resolution.
+
+### AI Endpoints
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `POST` | `/api/ai/categorise/<id>` | Manually trigger AI categorisation | Agent/Admin |
+| `POST` | `/api/ai/suggest/<id>` | Generate AI response suggestion | Agent/Admin |
+| `POST` | `/api/ai/summarise/<id>` | Generate a summary of the ticket | Agent/Admin |
+| `GET`  | `/api/ai/usage` | View DynamoDB API usage analytics | Admin Only |

@@ -5,11 +5,9 @@ from app.services.ticket_service import TicketService
 from app.schemas.ticket import TicketSchema
 from app.utils.decorators import role_required
 from app.extensions import db
-from app.services.ai_service import AIService
-
-# Phase 2 Imports for Chat and Notifications
 from app.sockets.notifications import emit_new_ticket_alert, emit_ticket_assigned
 from app.services.chat_service import ChatService
+from app.services.ai_service import AIService
 
 tickets_bp = Blueprint('tickets', __name__)
 ticket_schema = TicketSchema()
@@ -24,19 +22,18 @@ def create_ticket():
     if not data.get('subject') or not data.get('description'):
         return jsonify({"error": "Bad Request", "message": "Missing required fields"}), 400
         
-    # Transactional Creation 
     ticket = TicketService.create_ticket(data, user_id)
+    db.session.commit()
     
-    # Try AI Categorisation (Graceful Degradation)
     try:
-        ai_result = AIService.categorise_ticket(str(ticket.id), ticket.subject, ticket.description)
-        if ai_result:
-            ticket.category = ai_result.get('category')
-            ticket.priority = ai_result.get('priority', ticket.priority)
-            db.session.commit() # Save AI enhancements
-    except Exception as e:
-        # If AI fails, ticket remains created with default priority/null category
-        db.session.rollback() 
+        with db.session.begin_nested():
+            ai_result = AIService.categorise_ticket(str(ticket.id), ticket.subject, ticket.description)
+            if ai_result:
+                ticket.category = ai_result.get('category')
+                ticket.priority = ai_result.get('priority', ticket.priority)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
     
     ticket_data = ticket_schema.dump(ticket)
     emit_new_ticket_alert(ticket_data)
@@ -56,7 +53,6 @@ def list_tickets():
     
     query = Ticket.query
     
-    # Scope tickets so customers only see their own
     if claims.get('role') == 'customer':
         query = query.filter_by(customer_id=user_id)
         
@@ -80,6 +76,11 @@ def list_tickets():
 @jwt_required()
 def get_ticket(id):
     ticket = Ticket.query.get_or_404(id)
+    claims = get_jwt()
+    
+    if claims.get('role') == 'customer' and str(ticket.customer_id) != get_jwt_identity():
+        return jsonify({"error": "Forbidden"}), 403
+        
     return jsonify(ticket_schema.dump(ticket)), 200
 
 @tickets_bp.route('/<uuid:id>', methods=['PUT'])
@@ -106,7 +107,6 @@ def assign_ticket(id):
     
     target_agent_id = data.get('agent_id', user_id)
 
-    # RBAC Logic
     if claims.get('role') == 'agent':
         if str(target_agent_id) != str(user_id):
             return jsonify({"error": "Forbidden", "msg": "Agents can only self-assign"}), 403
@@ -127,61 +127,29 @@ def resolve_ticket(id):
     ticket = Ticket.query.get_or_404(id)
     ticket.status = 'resolved'
     
-    # If summary is provided manually, use it. Otherwise, use AI.
     if 'summary' in data:
         ticket.ai_summary = data['summary']
     else:
-        # Fetch full chat history from DynamoDB and call AI Summarise 
-        messages = ChatService.get_messages_by_ticket(id, limit=200)
+        messages = ChatService.get_messages_by_ticket(str(id), limit=200)
         summary = AIService.summarise_conversation(str(id), messages)
         if summary:
             ticket.ai_summary = summary
             
     db.session.commit()
     
-    # Emit resolution event [cite: 149-150]
     from app.extensions import socketio
     socketio.emit('ticket_resolved', {'ticket_id': str(id)}, room=f"ticket_{id}")
     
     return jsonify({"msg": "Ticket resolved", "ticket": ticket_schema.dump(ticket)}), 200
 
-# PHASE 2: New REST Fallback Endpoint for Chat History
-@tickets_bp.route('/<uuid:id>', methods=['GET'])
+@tickets_bp.route('/<uuid:id>/messages', methods=['GET'])
 @jwt_required()
-def get_ticket(id):
+def get_ticket_messages(id):
     ticket = Ticket.query.get_or_404(id)
     claims = get_jwt()
     
-    # FIX: Customer scoping
     if claims.get('role') == 'customer' and str(ticket.customer_id) != get_jwt_identity():
         return jsonify({"error": "Forbidden"}), 403
         
-    return jsonify(ticket_schema.dump(ticket)), 200
-
-@tickets_bp.route('', methods=['POST'])
-@jwt_required()
-def create_ticket():
-    data = request.get_json()
-    user_id = get_jwt_identity()
-    
-    if not data.get('subject') or not data.get('description'):
-        return jsonify({"error": "Bad Request", "message": "Missing required fields"}), 400
-        
-    ticket = TicketService.create_ticket(data, user_id)
-    db.session.commit() # Save ticket first
-    
-    # FIX: Use nested transaction for partial failure resiliency
-    try:
-        with db.session.begin_nested():
-            ai_result = AIService.categorise_ticket(str(ticket.id), ticket.subject, ticket.description)
-            if ai_result:
-                ticket.category = ai_result.get('category')
-                ticket.priority = ai_result.get('priority', ticket.priority)
-        db.session.commit()
-    except Exception:
-        db.session.rollback() # Roll back only the AI update
-    
-    ticket_data = ticket_schema.dump(ticket)
-    emit_new_ticket_alert(ticket_data)
-    
-    return jsonify(ticket_data), 201
+    messages = ChatService.get_messages_by_ticket(str(id), limit=50)
+    return jsonify(messages), 200
