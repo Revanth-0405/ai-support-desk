@@ -34,20 +34,18 @@ def suggest_endpoint(ticket_id):
     
     messages = ChatService.get_messages_by_ticket(ticket_id_str, limit=20)
     
-    search_terms = ticket.subject.split() if ticket.subject else []
+    filters = []
+    if ticket.subject:
+        filters.append(KnowledgeArticle.title.ilike(f"%{ticket.subject}%"))
     if ticket.category:
-        search_terms.append(ticket.category)
+        filters.append(KnowledgeArticle.category.ilike(f"%{ticket.category}%"))
         
     kb_articles = []
-    if search_terms:
-        filters = [
-            sa.or_(
-                KnowledgeArticle.title.ilike(f"%{term}%"),
-                KnowledgeArticle.category.ilike(f"%{term}%")
-            ) for term in search_terms
-        ]
-        # FIX: Added filter_by(is_published=True) to prevent feeding deleted articles to AI
-        kb_articles = KnowledgeArticle.query.filter_by(is_published=True).filter(sa.or_(*filters)).limit(3).all()
+    if filters:
+        kb_articles = KnowledgeArticle.query.filter(
+            KnowledgeArticle.is_published == True, 
+            sa.or_(*filters)
+        ).limit(3).all()
     
     suggestion = AIService.generate_suggestion(ticket_id_str, messages, kb_articles)
     if not suggestion:
