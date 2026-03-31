@@ -37,13 +37,13 @@ class ChatService:
                     raise
 
     @staticmethod
-    def put_message(ticket_id, sender_id, sender_role, content, message_type='text'):
+    def put_message(ticket_id, sender_id, sender_role, content, message_type='text', request_id=None):
         dynamodb = ChatService.get_db()
         table = dynamodb.Table('ChatMessages')
         now = datetime.now(timezone.utc).isoformat()
         
-        # FIX: Propagate request_id
-        req_id = getattr(request, 'request_id', 'ws-event')
+        # Use passed request_id (from websockets) OR fallback to flask request context
+        req_id = request_id or getattr(request, 'request_id', 'ws-event')
         
         message = {
             'ticket_id': str(ticket_id),
