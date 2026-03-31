@@ -109,36 +109,22 @@ class AIService:
 
     @staticmethod
     def generate_suggestion(ticket_id, context_messages, kb_articles):
-        """Generates a professional draft response"""
-        kb_context = "\n".join([f"Title: {kb.title}\nContent: {kb.content}" for kb in kb_articles])
-        chat_context = "\n".join([f"{msg['sender_role']}: {msg['content']}" for msg in context_messages])
+        kb_context = json.dumps([f"Title: {kb.title} Content: {kb.content}" for kb in kb_articles])
+        chat_context = json.dumps([f"{msg['sender_role']}: {msg['content']}" for msg in context_messages])
         
         prompt = f"""
-        Draft a helpful, professional response from an agent to a customer based on the chat history and knowledge base.
-        
-        Knowledge Base Articles:
-        {kb_context if kb_articles else 'None available.'}
-        
-        Recent Chat History:
-        {chat_context}
-        
-        Provide ONLY the exact text the agent should send to the customer. Do not include introductory phrases.
+        Draft a helpful, professional response from an agent to a customer based on the chat history.
+        Knowledge Base Articles: {kb_context}
+        Recent Chat History: {chat_context}
+        Provide ONLY the exact text the agent should send.
         """
         return AIService._call_with_retry(prompt, 'suggest', ticket_id)
 
     @staticmethod
     def summarise_conversation(ticket_id, messages):
-        """Generates a 3-5 sentence summary on resolution"""
-        chat_context = "\n".join([f"{msg['sender_role']}: {msg['content']}" for msg in messages])
-        
+        chat_context = json.dumps([f"{msg['sender_role']}: {msg['content']}" for msg in messages])
         prompt = f"""
         Summarize the following support conversation in exactly 3 to 5 sentences.
-        You MUST cover:
-        1. What the customer's issue was.
-        2. What solution was provided.
-        3. The final outcome.
-        
-        Conversation:
-        {chat_context}
+        Conversation: {chat_context}
         """
         return AIService._call_with_retry(prompt, 'summarise', ticket_id)

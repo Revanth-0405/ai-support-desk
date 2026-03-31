@@ -32,3 +32,16 @@ def test_ai_graceful_failure(mock_model, app):
     with patch('app.services.ai_service.AIService.log_usage'):
         result = AIService.categorise_ticket("ticket-123", "Test", "Test")
         assert result is None  # Should degrade gracefully
+
+@patch('app.services.ai_service.genai.GenerativeModel')
+def test_ai_suggest_mock(mock_model, app):
+    """Test AI response suggestion mock"""
+    mock_response = MagicMock()
+    mock_response.text = 'Please try resetting your router.'
+    mock_instance = MagicMock()
+    mock_instance.generate_content.return_value = mock_response
+    mock_model.return_value = mock_instance
+    
+    with patch('app.services.ai_service.AIService.log_usage'):
+        result = AIService.generate_suggestion("ticket-123", [], [])
+        assert "router" in result

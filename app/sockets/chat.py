@@ -7,14 +7,13 @@ from app.services.presence_service import PresenceService
 from app.models.ticket import Ticket
 from app.sockets.presence import connected_users
 
-
 @socketio.on('join_room')
 def on_join(data):
     ticket_id = data.get('ticket_id')
     user_data = connected_users.get(request.sid)
     
     if not ticket_id or not user_data:
-        emit('error', {'msg': 'Missing ticket_id or unauthenticated'}) # ACTION ITEM 11
+        emit('error', {'msg': 'Invalid ticket_id or not authenticated'}) # Jay's Fix
         return
         
     user_id = user_data['user_id']
@@ -26,10 +25,10 @@ def on_join(data):
         return
         
     if role == 'customer' and str(ticket.customer_id) != user_id:
-        emit('error', {'msg': 'Unauthorized'})
+        emit('error', {'msg': 'Unauthorized: Not your ticket'})
         return  
         
-    # Block agents from joining unassigned tickets they aren't assigned to
+    # Jay's Fix: Block agents from joining unassigned tickets they aren't assigned to
     if role == 'agent' and str(ticket.assigned_agent_id) != user_id:
         emit('error', {'msg': 'Unauthorized: Not the assigned agent'})
         return  
@@ -46,25 +45,25 @@ def on_send_message(data):
     content = data.get('content')
     user_data = connected_users.get(request.sid)
     
-    room = f"ticket_{ticket_id}"
+    if not ticket_id or not content or not user_data:
+        emit('error', {'msg': 'Missing message content or ticket_id'})
+        return
     
+    room = f"ticket_{ticket_id}"
     if room not in rooms(request.sid):
         emit('error', {'msg': 'Unauthorized: You have not joined this room'})
         return
         
-    # Generate a unique trace ID for WebSocket events
+    # Claude's Fix: Trace ID passing
     event_id = f"ws-{uuid.uuid4()}"
-        
     message = ChatService.put_message(
         ticket_id=ticket_id, 
         sender_id=user_data['user_id'],
         sender_role=user_data['role'], 
-        content=content
+        content=content,
+        request_id=event_id 
     )
-    
-    # Manually append the request_id to the message dict for broadcasting
     message['request_id'] = event_id
-    
     emit('new_message', message, room=room)
 
 @socketio.on('leave_room')
@@ -75,8 +74,5 @@ def on_leave(data):
     if ticket_id and user_data:
         room = f"ticket_{ticket_id}"
         leave_room(room)
-        
-        # Clear the active_ticket_id when they leave
         PresenceService.update_presence(user_data['user_id'], status='online', active_ticket_id=None)
-        
         emit('user_left', {'user_id': user_data['user_id'], 'ticket_id': ticket_id}, room=room)

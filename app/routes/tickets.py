@@ -1,3 +1,4 @@
+import uuid
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from app.models.ticket import Ticket
@@ -17,7 +18,8 @@ tickets_schema = TicketSchema(many=True)
 @jwt_required()
 def create_ticket():
     data = request.get_json()
-    user_id = get_jwt_identity()
+    user_id_str = get_jwt_identity()
+    user_id = uuid.UUID(str(user_id_str)) # FIX: Convert string to UUID for SQLAlchemy
     
     if not data.get('subject') or not data.get('description'):
         return jsonify({"error": "Bad Request", "message": "Missing required fields"}), 400
@@ -52,9 +54,8 @@ def list_tickets():
     claims = get_jwt()
     
     query = Ticket.query
-    
     if claims.get('role') == 'customer':
-        query = query.filter_by(customer_id=user_id)
+        query = query.filter_by(customer_id=uuid.UUID(str(user_id)))
         
     if status:
         query = query.filter_by(status=status)
@@ -102,15 +103,16 @@ def update_ticket(id):
 def assign_ticket(id):
     data = request.get_json() or {}
     ticket = Ticket.query.get_or_404(id)
-    user_id = get_jwt_identity()
+    user_id_str = get_jwt_identity()
     claims = get_jwt()
     
-    target_agent_id = data.get('agent_id', user_id)
-
+    target_agent_id_str = data.get('agent_id', user_id_str)
+    target_agent_id = uuid.UUID(str(target_agent_id_str)) # FIX: Convert to UUID
+    
     if claims.get('role') == 'agent':
-        if str(target_agent_id) != str(user_id):
+        if str(target_agent_id) != str(user_id_str):
             return jsonify({"error": "Forbidden", "msg": "Agents can only self-assign"}), 403
-        if ticket.assigned_agent_id is not None and str(ticket.assigned_agent_id) != str(user_id):
+        if ticket.assigned_agent_id is not None and str(ticket.assigned_agent_id) != str(user_id_str):
             return jsonify({"error": "Forbidden", "msg": "Ticket already assigned"}), 403
 
     ticket.assigned_agent_id = target_agent_id
