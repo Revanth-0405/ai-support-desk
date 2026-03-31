@@ -59,7 +59,8 @@ def on_send_message(data):
         ticket_id=ticket_id, 
         sender_id=user_data['user_id'],
         sender_role=user_data['role'], 
-        content=content
+        content=content,
+        request_id=event_id 
     )
     
     # Manually append the request_id to the message dict for broadcasting
