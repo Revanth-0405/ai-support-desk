@@ -196,3 +196,27 @@ Ensure the following is added to your `.env` file to enable AI features:
 | `POST` | `/api/ai/suggest/<id>` | Generate AI response suggestion | Agent/Admin |
 | `POST` | `/api/ai/summarise/<id>` | Generate a summary of the ticket | Agent/Admin |
 | `GET`  | `/api/ai/usage` | View DynamoDB API usage analytics | Admin Only |
+
+# AI Support Desk API
+This is a fully featured, production-ready AI Support Desk backend completed through **Phase 4**.
+
+## Architecture
+* **Database:** PostgreSQL (Relational) + DynamoDB (Chat/Presence)
+* **Real-Time:** Flask-SocketIO (WebSockets)
+* **AI Engine:** Google Gemini 2.0 Flash
+* **Observability:** JSON Logging with end-to-end `request_id` tracing.
+
+## Phase 4: Analytics & Observability
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/api/analytics/tickets` | Ticket volume, resolution time, category stats |
+| `GET`  | `/api/analytics/agents` | Agent resolution rates and loads |
+| `GET`  | `/api/analytics/ai` | Gemini usage, token metrics, latency |
+| `GET`  | `/api/health` | 5-point check (Flask, PG, Dynamo, Gemini, WS) |
+
+## E2E Testing Instructions
+To verify the full 10-step lifecycle:
+1. Register a customer (`POST /api/auth/register`)
+2. Login and get JWT (`POST /api/auth/login`)
+3. Create a ticket (`POST /api/tickets`) -> Observe AI auto-categorisation.
+4. Run `pytest -v` to execute Unit, Integration, and AI Mock tests.
