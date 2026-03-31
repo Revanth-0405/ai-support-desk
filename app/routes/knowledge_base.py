@@ -1,9 +1,11 @@
+import uuid
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import get_jwt_identity
 from app.services.kb_service import KBService
 from app.models.knowledge_base import KnowledgeArticle
 from app.schemas.knowledge_base import KnowledgeArticleSchema
 from app.utils.decorators import role_required
+from app.extensions import db
 import sqlalchemy as sa
 
 kb_bp = Blueprint('kb', __name__)
@@ -11,6 +13,7 @@ kb_schema = KnowledgeArticleSchema()
 kbs_schema = KnowledgeArticleSchema(many=True)
 
 @kb_bp.route('', methods=['GET'])
+
 def list_kb():
     page = request.args.get('page', 1, type=int)
     search = request.args.get('search', '')
@@ -36,12 +39,14 @@ def get_article(id):
 @role_required(['agent', 'admin'])
 def create_article():
     data = request.get_json()
-    if not all(k in data for k in ("title", "content", "category")):
-        return jsonify({"error": "Bad Request", "message": "Missing required fields"}), 400
-        
-    author_id = get_jwt_identity()
+    
+    # FIX: Convert the string identity from the JWT into a valid UUID object
+    author_id_str = get_jwt_identity()
+    author_id = uuid.UUID(str(author_id_str)) 
+    
     article = KBService.create_article(data, author_id)
-    return jsonify({"msg": "Article created", "article": kb_schema.dump(article)}), 201
+    db.session.commit()
+    return jsonify({"msg": "Article created", "id": article.id}), 201
 
 @kb_bp.route('/<uuid:id>', methods=['PUT'])
 @role_required(['agent', 'admin'])
