@@ -25,15 +25,17 @@ def categorise_endpoint(ticket_id):
         
     return jsonify({"error": "AI classification failed"}), 500
 
-@ai_bp.route('/suggest/<uuid:ticket_id>', methods=['POST'])
+@ai_bp.route('/suggest/<uuid:id>', methods=['POST'])
 @role_required(['agent', 'admin'])
-def suggest_endpoint(ticket_id):
-    ticket_id_str = str(ticket_id) # FIX: Standardize to string immediately
-    ticket = Ticket.query.get_or_404(ticket_id_str)
-    agent_id = get_jwt_identity()
+def suggest_endpoint(id):
+    ticket_id_str = str(id)
+    ticket = Ticket.query.get_or_404(id)
     
-    messages = ChatService.get_messages_by_ticket(ticket_id_str, limit=20)
+    # FIX: Fetch the chat history (This is what Pylance was complaining was missing!)
+    context_messages = ChatService.get_messages_by_ticket(ticket_id_str, limit=20)
     
+    # FIX Issue 6: Smarter KB Search
+    import sqlalchemy as sa
     filters = []
     if ticket.subject:
         terms = [t for t in ticket.subject.split() if len(t) > 3]
@@ -51,14 +53,20 @@ def suggest_endpoint(ticket_id):
         ).limit(3).all()
 
     suggestion = AIService.generate_suggestion(ticket_id_str, context_messages, kb_articles)
+    
     if suggestion:
         # FIX Issue 9: Store with sender_role='ai'
+        agent_id = get_jwt_identity()
         stored_message = ChatService.put_message(
-            ticket_id=ticket_id_str, sender_id=agent_id,
-            sender_role='ai', content=suggestion, message_type='ai_suggestion'
+            ticket_id=ticket_id_str, 
+            sender_id=agent_id,
+            sender_role='ai', 
+            content=suggestion, 
+            message_type='ai_suggestion'
         )
-    if not suggestion:
-        return jsonify({"error": "Failed to generate suggestion"}), 500
+        return jsonify({"suggestion": suggestion, "message": stored_message}), 200
+        
+    return jsonify({"error": "Failed to generate suggestion"}), 500
         
     stored_message = ChatService.put_message(
         ticket_id=ticket_id_str, sender_id=agent_id,
