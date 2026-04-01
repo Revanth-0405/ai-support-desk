@@ -45,3 +45,16 @@ def test_ai_suggest_mock(mock_model, app):
     with patch('app.services.ai_service.AIService.log_usage'):
         result = AIService.generate_suggestion("ticket-123", [], [])
         assert "router" in result
+
+@patch('app.services.ai_service.genai.GenerativeModel')
+def test_ai_summarise_mock(mock_model, app):
+    """Test AI conversation summarisation mock"""
+    mock_response = MagicMock()
+    mock_response.text = 'The issue is resolved.'
+    mock_instance = MagicMock()
+    mock_instance.generate_content.return_value = mock_response
+    mock_model.return_value = mock_instance
+
+    with patch('app.services.ai_service.AIService.log_usage'):
+        result = AIService.summarise_conversation("ticket-123", [{"sender_role": "customer", "content": "fixed"}])
+        assert "resolved" in result

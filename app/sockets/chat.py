@@ -1,4 +1,5 @@
 import uuid
+import time
 from flask import request
 from flask_socketio import emit, join_room, leave_room, rooms
 from app.extensions import socketio, db
@@ -6,6 +7,8 @@ from app.services.chat_service import ChatService
 from app.services.presence_service import PresenceService
 from app.models.ticket import Ticket
 from app.sockets.presence import connected_users
+
+typing_cache = {}
 
 @socketio.on('join_room')
 def on_join(data):
@@ -76,3 +79,25 @@ def on_leave(data):
         leave_room(room)
         PresenceService.update_presence(user_data['user_id'], status='online', active_ticket_id=None)
         emit('user_left', {'user_id': user_data['user_id'], 'ticket_id': ticket_id}, room=room)
+
+@socketio.on('typing')
+def on_typing(data):
+    user_data = connected_users.get(request.sid)
+    ticket_id = data.get('ticket_id')
+    
+    if not user_data or not ticket_id:
+        return
+        
+    user_id = user_data['user_id']
+    now = time.time()
+    
+    # 2-second Server-side Debounce
+    if now - typing_cache.get(user_id, 0) < 2.0:
+        return
+    typing_cache[user_id] = now
+    
+    room = f"ticket_{ticket_id}"
+    emit('user_typing', {
+        'user_id': user_id, 
+        'name': user_data.get('username')
+    }, room=room, include_self=False)
