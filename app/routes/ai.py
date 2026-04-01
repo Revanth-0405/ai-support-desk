@@ -36,7 +36,10 @@ def suggest_endpoint(ticket_id):
     
     filters = []
     if ticket.subject:
-        filters.append(KnowledgeArticle.title.ilike(f"%{ticket.subject}%"))
+        terms = [t for t in ticket.subject.split() if len(t) > 3]
+        if terms:
+            subject_filters = [KnowledgeArticle.title.ilike(f"%{term}%") for term in terms]
+            filters.append(sa.or_(*subject_filters))
     if ticket.category:
         filters.append(KnowledgeArticle.category.ilike(f"%{ticket.category}%"))
         
@@ -46,8 +49,14 @@ def suggest_endpoint(ticket_id):
             KnowledgeArticle.is_published == True, 
             sa.or_(*filters)
         ).limit(3).all()
-    
-    suggestion = AIService.generate_suggestion(ticket_id_str, messages, kb_articles)
+
+    suggestion = AIService.generate_suggestion(ticket_id_str, context_messages, kb_articles)
+    if suggestion:
+        # FIX Issue 9: Store with sender_role='ai'
+        stored_message = ChatService.put_message(
+            ticket_id=ticket_id_str, sender_id=agent_id,
+            sender_role='ai', content=suggestion, message_type='ai_suggestion'
+        )
     if not suggestion:
         return jsonify({"error": "Failed to generate suggestion"}), 500
         

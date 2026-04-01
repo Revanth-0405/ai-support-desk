@@ -83,6 +83,7 @@ class AIService:
         
         Examples:
         Subject: "Can't access my dashboard" | Description: "I get a 500 error on login." -> {{"category": "technical", "priority": "high"}}
+        Subject: "Change credit card" | Description: "How do I update my payment method?" -> {{"category": "billing", "priority": "medium"}}
         
         Now categorize this ticket:
         Subject: {safe_subject}
@@ -116,7 +117,7 @@ class AIService:
         Draft a helpful, professional response from an agent to a customer based on the chat history.
         Knowledge Base Articles: {kb_context}
         Recent Chat History: {chat_context}
-        Provide ONLY the exact text the agent should send.
+        Provide ONLY the exact text the agent should send. Do not include quotes or prefatory text.
         """
         return AIService._call_with_retry(prompt, 'suggest', ticket_id)
 
@@ -126,5 +127,6 @@ class AIService:
         prompt = f"""
         Summarize the following support conversation in exactly 3 to 5 sentences.
         Conversation: {chat_context}
+        Return ONLY the plain text summary without any introduction.
         """
         return AIService._call_with_retry(prompt, 'summarise', ticket_id)

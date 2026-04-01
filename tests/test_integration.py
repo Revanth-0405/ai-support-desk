@@ -102,3 +102,47 @@ def test_ws_typing_indicator(client, app):
     ws_client.emit('typing', {'ticket_id': '00000000-0000-0000-0000-000000000000'})
     received = ws_client.get_received()
     assert len(received) == 0
+
+def test_ws_happy_path_chat(client, app):
+    """WebSocket: Happy path join_room and send_message broadcast"""
+    from app.models.user import User
+    from unittest.mock import patch, MagicMock
+    import uuid
+    
+    # 1. Register and Login to get a valid token
+    client.post('/api/auth/register', json={"username": "happyws", "email": "happy@test.com", "password": "password123"})
+    token = client.post('/api/auth/login', json={"email": "happy@test.com", "password": "password123"}).get_json()['access_token']
+
+    # 2. Extract user info safely
+    with app.app_context():
+        user = User.query.filter_by(email="happy@test.com").first()
+        user_dict = {'user_id': str(user.id), 'role': user.role, 'username': user.username}
+
+    ticket_id = str(uuid.uuid4())
+    
+    # 3. Completely bypass the database and DynamoDB to prevent timeout crashes
+    mock_ticket = MagicMock()
+    mock_ticket.customer_id = str(user.id)
+    mock_ticket.assigned_agent_id = None
+    
+    from app.extensions import socketio
+    ws_client = socketio.test_client(app, query_string=f"token={token}")
+
+    mock_connected_users = MagicMock()
+    mock_connected_users.get.return_value = user_dict
+
+    # 4. Inject all the mocks and run the socket events in a vacuum
+    with patch('app.sockets.chat.connected_users', mock_connected_users):
+        with patch('app.sockets.chat.db.session.get', return_value=mock_ticket):
+            with patch('app.sockets.chat.PresenceService.update_presence'):
+                with patch('app.sockets.chat.ChatService.get_messages_by_ticket', return_value=[]):
+                    
+                    ws_client.emit('join_room', {'ticket_id': ticket_id})
+                    received = ws_client.get_received()
+                    assert any(msg['name'] == 'message_history' for msg in received)
+
+            with patch('app.sockets.chat.ChatService.put_message', return_value={'message_id': '123'}):
+                
+                ws_client.emit('send_message', {'ticket_id': ticket_id, 'content': 'Hello World'})
+                received2 = ws_client.get_received()
+                assert any(msg['name'] == 'new_message' for msg in received2)
