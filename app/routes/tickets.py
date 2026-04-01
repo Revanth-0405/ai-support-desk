@@ -132,7 +132,7 @@ def resolve_ticket(id):
     if 'summary' in data:
         ticket.ai_summary = data['summary']
     else:
-        messages = ChatService.get_messages_by_ticket(str(id), limit=200)
+        messages = ChatService.get_messages_by_ticket(str(id))
         summary = AIService.summarise_conversation(str(id), messages)
         if summary:
             ticket.ai_summary = summary

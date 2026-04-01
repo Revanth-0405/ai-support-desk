@@ -2,6 +2,8 @@ import pytest
 from app.extensions import db
 from app.models.ticket import Ticket
 from app.models.knowledge_base import KnowledgeArticle
+from app.models.user import User
+
 
 def get_token(client, email, password):
     res = client.post('/api/auth/login', json={"email": email, "password": password})
@@ -72,3 +74,54 @@ def test_ai_summarise_unauthorized(client):
 def test_ai_usage_unauthorized(client):
     res = client.get('/api/ai/usage')
     assert res.status_code == 401
+
+def test_ticket_update_assign_resolve(client, app):
+    """Test agent updating, assigning, and resolving a ticket"""
+    from app.models.user import User
+    from unittest.mock import patch # FIX: Import patch
+    
+    client.post('/api/auth/register', json={"username": "c3", "email": "c3@test.com", "password": "password123"})
+    c_token = get_token(client, "c3@test.com", "password123")
+
+    client.post('/api/auth/register', json={"username": "a1", "email": "a1@test.com", "password": "password123"})
+    with app.app_context():
+        u = User.query.filter_by(email="a1@test.com").first()
+        u.role = 'agent'
+        db.session.commit()
+    a_token = get_token(client, "a1@test.com", "password123")
+
+    t_res = client.post('/api/tickets', json={"subject": "Help", "description": "Need help"}, headers={"Authorization": f"Bearer {c_token}"})
+    t_id = t_res.get_json()['id']
+
+    with patch('app.sockets.notifications.PresenceService.get_user_presence', return_value=None):
+        client.put(f'/api/tickets/{t_id}/assign', json={}, headers={"Authorization": f"Bearer {a_token}"})
+    
+    u_res = client.put(f'/api/tickets/{t_id}', json={"priority": "high"}, headers={"Authorization": f"Bearer {a_token}"})
+    assert u_res.status_code == 200
+
+    with patch('app.routes.tickets.ChatService.get_messages_by_ticket', return_value=[]):
+        with patch('app.routes.tickets.AIService.summarise_conversation', return_value="Summary"):
+            r_res = client.put(f'/api/tickets/{t_id}/resolve', json={}, headers={"Authorization": f"Bearer {a_token}"})
+            assert r_res.status_code == 200
+            assert r_res.get_json()['ticket']['status'] == 'resolved'
+
+def test_kb_update_delete_search(client, app):
+    """Test KB update, soft delete, and search functionality"""
+    from app.models.user import User # FIX: Import the model
+    
+    client.post('/api/auth/register', json={"username": "a2", "email": "a2@test.com", "password": "password123"})
+    with app.app_context():
+        u = User.query.filter_by(email="a2@test.com").first()
+        u.role = 'admin'
+        db.session.commit()
+    token = get_token(client, "a2@test.com", "password123")
+
+    kb_res = client.post('/api/kb', json={"title": "SearchMe", "content": "Data", "category": "general"}, headers={"Authorization": f"Bearer {token}"})
+    kb_id = kb_res.get_json()['id']
+
+    s_res = client.get('/api/kb?query=SearchMe', headers={"Authorization": f"Bearer {token}"})
+    assert len(s_res.get_json()['items']) > 0
+
+    client.put(f'/api/kb/{kb_id}', json={"title": "Updated"}, headers={"Authorization": f"Bearer {token}"})
+    d_res = client.delete(f'/api/kb/{kb_id}', headers={"Authorization": f"Bearer {token}"})
+    assert d_res.status_code == 200
